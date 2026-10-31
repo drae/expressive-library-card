@@ -142,7 +142,7 @@ const $$ = (el, s) => [...el.shadowRoot.querySelectorAll(s)];
   ok($(glance, ".lr .tm").textContent === "Media disk · 5.3 TB free of 15.8", "disk from the Sonarr disk path");
   ok($$(glance, ".spark i").length === 7 && $(glance, ".card").textContent.includes("31 plays this week") && $(glance, ".card").textContent.includes("236 films · 75 shows"), "plays sparkline and library counts");
 
-  ok($(agenda, ".name").textContent === "Coming up" && /due · 7 days$/.test($(agenda, ".hsub").textContent), "agenda heading");
+  ok($(agenda, ".name").textContent === "Coming up" && /due · next 7 days$/.test($(agenda, ".hsub").textContent), "agenda heading");
   const days = $$(agenda, ".day span:first-child").map((s) => s.textContent);
   ok(days[0] === "Yesterday" && days.includes("Monday") && !days.includes("Today"), `day groups (${days.join(", ")})`);
   const rows = $$(agenda, ".ar");

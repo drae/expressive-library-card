@@ -33,7 +33,7 @@
  */
 
 (() => {
-  const VERSION = "0.1.0";
+  const VERSION = "0.1.1";
   const DAY_MS = 86400000;
   const REFRESH_MS = 5 * 60000;
   const ACTIVITY_MS = 30000;
@@ -460,7 +460,7 @@
       }
       const items = this._items();
       const due = items.filter((i) => !i.have).length;
-      const sub = `${due} due · ${cfg.days} days`;
+      const sub = `${due} due · next ${cfg.days} days`;
       if (!items.length) return [sub, `<div class="msg">Nothing due in the next ${cfg.days} days</div>`];
       const groups = new Map();
       for (const it of items) {
@@ -525,8 +525,8 @@
       }
       const html = `<div class="card">
         <div class="stats">
-          <div class="stat"><b>${fresh}</b><span>new this week</span></div>
-          <div class="stat"><b>${due}</b><span>due in ${this._config.days} days</span></div>
+          <div class="stat"><b>${fresh}</b><span>added, past 7 days</span></div>
+          <div class="stat"><b>${due}</b><span>due, next ${this._config.days} days</span></div>
           <div class="stat"><b>${watching}</b><span>streaming</span></div>
         </div>${act}${disk}${spark}</div>`;
       return ["Plex · Sonarr · Radarr", html];

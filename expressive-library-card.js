@@ -38,7 +38,7 @@
  */
 
 (() => {
-  const VERSION = "0.2.0";
+  const VERSION = "0.2.1";
   const DAY_MS = 86400000;
   const SLOW_MS = 5 * 60000;
   const FAST_MS = 30000;
@@ -256,15 +256,18 @@
         };
       }));
 
+  // Live TV has no position or programme times, so it shows the channel instead of progress.
+  const channel = (s) => /\(([^)]+)\)/.exec(s.channel_title ?? "")?.[1] ?? s.channel_call_sign ?? "";
   const streamRows = (sessions) =>
     (sessions ?? []).map((s) => {
-      const tv = s.media_type === "episode";
+      const live = num(s.live) === 1;
+      const tv = s.media_type === "episode" && s.grandparent_title;
       const left = Math.max(0, Math.round((num(s.duration) - num(s.view_offset)) / 60000));
       const how = s.transcode_decision === "transcode" ? "transcode" : s.transcode_decision === "copy" ? "direct stream" : "direct play";
       return {
         title: tv ? `${s.grandparent_title} · S${s.parent_media_index} E${s.media_index}` : s.title,
-        sub: [s.player || s.product, how, left ? `${left} min left` : ""].filter(Boolean).join(" · "),
-        pct: num(s.progress_percent),
+        sub: [live ? "Live" : "", live ? channel(s) : "", s.player || s.product, how, !live && left ? `${left} min left` : ""].filter(Boolean).join(" · "),
+        pct: live ? null : num(s.progress_percent),
       };
     });
 
@@ -472,7 +475,7 @@
     _streaming() {
       const rows = streamRows(store.data.sessions);
       if (!rows.length) return ["", `<div class="msg">Nobody watching</div>`];
-      const html = rows.map((r) => `<div class="ar">${this._disc("mdi:television", true)}<div class="tx"><div class="ti">${esc(r.title)}</div><div class="su">${esc(r.sub)}</div>${this._bar(r.pct)}</div></div>`).join("");
+      const html = rows.map((r) => `<div class="ar">${this._disc("mdi:television", true)}<div class="tx"><div class="ti">${esc(r.title)}</div><div class="su">${esc(r.sub)}</div>${r.pct == null ? "" : this._bar(r.pct)}</div></div>`).join("");
       return [`${rows.length} now`, `<div class="rows">${html}</div>`, true];
     }
 

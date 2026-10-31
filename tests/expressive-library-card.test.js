@@ -107,6 +107,11 @@ const SESSIONS = [{ media_type: "episode", grandparent_title: "Moss", parent_med
 const sr = M.streamRows(SESSIONS)[0];
 ok(sr.title === "Moss · S2 E11" && sr.sub === "LG TV · direct play · 23 min left" && sr.pct === 54 && !sr.sub.includes("someone"), "stream row: show, player, how, time left, no user name");
 
+const LIVE = [{ media_type: "movie", live: 1, title: "Goosebumps 2", channel_title: "004 C4 (Channel 4)", channel_call_sign: "C4HD",
+  player: "DESKTOP", transcode_decision: "copy", duration: "6300000", view_offset: "", progress_percent: "0" }];
+const lr = M.streamRows(LIVE)[0];
+ok(lr.sub === "Live · Channel 4 · DESKTOP · direct stream" && lr.pct === null, "live TV: channel, no progress or time left");
+
 // rendering with a fake hass
 const calls = [];
 let busy = false;

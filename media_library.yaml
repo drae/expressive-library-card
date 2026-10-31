@@ -1,13 +1,9 @@
-# Media library: data for custom:expressive-library-card.
-# The card calls these on demand (only while it is on screen) and reads the responses.
-# Live state (queues, streams, disk) comes from the Sonarr, Radarr, Tautulli and SABnzbd integrations.
-# Keys live in secrets.yaml:
-#   sonarr_api_key: <Sonarr → Settings → General → API Key>
-#   radarr_api_key: <Radarr → Settings → General → API Key>
-#   tautulli_recently_added_url: "http://tautulli.media.svc.cluster.local:8181/api/v2?apikey=<key>&cmd=get_recently_added&count=40"
-#   tautulli_plays_url: "http://tautulli.media.svc.cluster.local:8181/api/v2?apikey=<key>&cmd=get_plays_by_date&time_range=7"
-#   tautulli_libraries_url: "http://tautulli.media.svc.cluster.local:8181/api/v2?apikey=<key>&cmd=get_libraries"
-#   tautulli_activity_url: "http://tautulli.media.svc.cluster.local:8181/api/v2?apikey=<key>&cmd=get_activity"
+# Media library: data for custom:expressive-library-card (the #media pop-up).
+# The card calls the rest commands on demand (only while it is on screen) and reads the responses.
+# The rest sensors count queue problems and health warnings for the navbar badge and the top-bar alert pill.
+# Keys come from the pod environment (ExternalSecret home-assistant-secret):
+#   SONARR_AUTH_APIKEY, RADARR_AUTH_APIKEY, TAUTULLI_ACTIVITY_URL (full URL; Tautulli's key goes in the query string)
+# The Plex token is plex_token in secrets.yaml (shared with lounge_tv.yaml).
 
 rest_command:
   # Episodes from yesterday to `days` ahead, with hasFile and the series (images, network).
@@ -18,7 +14,7 @@ rest_command:
       (today_at() + timedelta(days=(days | default(7) | int(7)) + 1)).isoformat() | urlencode }}
     method: get
     headers:
-      X-Api-Key: !secret sonarr_api_key
+      X-Api-Key: !env_var SONARR_AUTH_APIKEY
     timeout: 20
 
   # Monitored films with a cinema, digital or physical release in the window.
@@ -29,25 +25,165 @@ rest_command:
       (today_at() + timedelta(days=(days | default(7) | int(7)) + 1)).isoformat() | urlencode }}
     method: get
     headers:
-      X-Api-Key: !secret radarr_api_key
+      X-Api-Key: !env_var RADARR_AUTH_APIKEY
     timeout: 20
 
-  tautulli_recently_added:
-    url: !secret tautulli_recently_added_url
+  # Download queues with each item's tracked status and status messages.
+  sonarr_queue:
+    url: http://sonarr.downloads.svc.cluster.local:8989/api/v3/queue?pageSize=100&includeSeries=true&includeEpisode=true
     method: get
+    headers:
+      X-Api-Key: !env_var SONARR_AUTH_APIKEY
     timeout: 20
 
-  tautulli_plays:
-    url: !secret tautulli_plays_url
+  radarr_queue:
+    url: http://radarr.downloads.svc.cluster.local:7878/api/v3/queue?pageSize=100&includeMovie=true
     method: get
+    headers:
+      X-Api-Key: !env_var RADARR_AUTH_APIKEY
     timeout: 20
 
-  tautulli_libraries:
-    url: !secret tautulli_libraries_url
+  sonarr_health:
+    url: http://sonarr.downloads.svc.cluster.local:8989/api/v3/health
     method: get
+    headers:
+      X-Api-Key: !env_var SONARR_AUTH_APIKEY
+    timeout: 20
+
+  radarr_health:
+    url: http://radarr.downloads.svc.cluster.local:7878/api/v3/health
+    method: get
+    headers:
+      X-Api-Key: !env_var RADARR_AUTH_APIKEY
+    timeout: 20
+
+  # Recently added on Plex, with watched counts for the token's account: episodes (TV shows library) and films.
+  plex_recent_episodes:
+    url: http://plex.media:32400/library/sections/2/recentlyAdded?type=4
+    method: get
+    headers:
+      Accept: application/json
+      X-Plex-Token: !secret plex_token
+      X-Plex-Container-Start: "0"
+      X-Plex-Container-Size: "60"
+    timeout: 20
+
+  plex_recent_films:
+    url: http://plex.media:32400/library/sections/1/recentlyAdded
+    method: get
+    headers:
+      Accept: application/json
+      X-Plex-Token: !secret plex_token
+      X-Plex-Container-Start: "0"
+      X-Plex-Container-Size: "30"
     timeout: 20
 
   tautulli_activity:
-    url: !secret tautulli_activity_url
+    url: !env_var TAUTULLI_ACTIVITY_URL
     method: get
     timeout: 20
+
+rest:
+  - resource: http://sonarr.downloads.svc.cluster.local:8989/api/v3/queue?pageSize=100
+    headers:
+      X-Api-Key: !env_var SONARR_AUTH_APIKEY
+    scan_interval: 300
+    sensor:
+      - name: Sonarr queue problems
+        unique_id: sonarr_queue_problems
+        icon: mdi:alert-outline
+        value_template: "{{ value_json.records | default([]) | rejectattr('trackedDownloadStatus', 'eq', 'ok') | list | count }}"
+
+  - resource: http://radarr.downloads.svc.cluster.local:7878/api/v3/queue?pageSize=100
+    headers:
+      X-Api-Key: !env_var RADARR_AUTH_APIKEY
+    scan_interval: 300
+    sensor:
+      - name: Radarr queue problems
+        unique_id: radarr_queue_problems
+        icon: mdi:alert-outline
+        value_template: "{{ value_json.records | default([]) | rejectattr('trackedDownloadStatus', 'eq', 'ok') | list | count }}"
+
+  - resource: http://sonarr.downloads.svc.cluster.local:8989/api/v3/health
+    headers:
+      X-Api-Key: !env_var SONARR_AUTH_APIKEY
+    scan_interval: 600
+    sensor:
+      - name: Sonarr health warnings
+        unique_id: sonarr_health_warnings
+        icon: mdi:alert-outline
+        value_template: "{{ value_json | default([]) | count }}"
+
+  - resource: http://radarr.downloads.svc.cluster.local:7878/api/v3/health
+    headers:
+      X-Api-Key: !env_var RADARR_AUTH_APIKEY
+    scan_interval: 600
+    sensor:
+      - name: Radarr health warnings
+        unique_id: radarr_health_warnings
+        icon: mdi:alert-outline
+        value_template: "{{ value_json | default([]) | count }}"
+
+template:
+  - sensor:
+      - name: Media problems
+        unique_id: media_problems
+        icon: mdi:alert-outline
+        state_class: measurement
+        state: >-
+          {{ ['sensor.sonarr_queue_problems', 'sensor.radarr_queue_problems',
+              'sensor.sonarr_health_warnings', 'sensor.radarr_health_warnings']
+             | map('states') | map('int', 0) | sum }}
+  - binary_sensor:
+      # Drives the Media alert pill in the top bar, like Leak, Batteries and Doors.
+      - name: Media problems
+        unique_id: media_problems_alert
+        device_class: problem
+        state: "{{ states('sensor.media_problems') | int(0) > 0 }}"
+
+automation:
+  - id: media_problem_alert
+    alias: Media - alert on a new download problem
+    description: Phone alert when Sonarr or Radarr reports a new queue problem or health warning.
+    mode: queued
+    triggers:
+      - trigger: state
+        entity_id:
+          - sensor.sonarr_queue_problems
+          - sensor.radarr_queue_problems
+          - sensor.sonarr_health_warnings
+          - sensor.radarr_health_warnings
+    conditions:
+      - condition: template
+        value_template: >-
+          {{ trigger.from_state is not none
+             and trigger.to_state.state | int(0) > trigger.from_state.state | int(0) }}
+    actions:
+      - variables:
+          app: "{{ 'Sonarr' if 'sonarr' in trigger.entity_id else 'Radarr' }}"
+          kind: "{{ 'health' if 'health' in trigger.entity_id else 'queue' }}"
+      - action: "rest_command.{{ app | lower }}_{{ kind }}"
+        response_variable: reply
+      - variables:
+          lines: >-
+            {%- set c = reply.content -%}
+            {%- if kind == 'health' -%}
+              {{- c | map(attribute='message') | list -}}
+            {%- else -%}
+              {%- set ns = namespace(out=[]) -%}
+              {%- for r in c.records | rejectattr('trackedDownloadStatus', 'eq', 'ok') -%}
+                {%- if r.series is defined and r.episode is defined -%}
+                  {%- set what = r.series.title ~ ' S%02dE%02d' | format(r.episode.seasonNumber, r.episode.episodeNumber) -%}
+                {%- else -%}
+                  {%- set what = r.movie.title if r.movie is defined else r.title -%}
+                {%- endif -%}
+                {%- set msgs = r.statusMessages | default([]) | map(attribute='messages') | sum(start=[]) -%}
+                {%- set why = msgs | first if msgs else (r.errorMessage | default(r.trackedDownloadState, true)) -%}
+                {%- set ns.out = ns.out + [what ~ ': ' ~ why] -%}
+              {%- endfor -%}
+              {{- ns.out -}}
+            {%- endif -%}
+      - action: script.notify_phone
+        data:
+          title: "{{ app }}: {{ 'health warning' if kind == 'health' else 'download problem' }}"
+          message: "{{ (lines[:3] | join('\n')) if lines else 'Open Media for details.' }}"

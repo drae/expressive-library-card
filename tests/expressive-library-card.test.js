@@ -38,23 +38,7 @@ const RADARR = [
   film("Not Monitored", { monitored: false, digitalRelease: "2026-11-03T00:00:00Z" }),
   film("Far Off", { digitalRelease: "2026-12-20T00:00:00Z" }),
 ];
-const t = (iso) => String(Date.parse(iso) / 1000);
-const RECENT = [
-  { media_type: "season", parent_title: "Kite Runners", title: "Season 1", added_at: t("2026-10-30T01:33:00Z") },
-  { media_type: "episode", grandparent_title: "Moss", title: "Ten", added_at: t("2026-10-30T08:00:00Z") },
-  { media_type: "episode", grandparent_title: "Moss", title: "Nine", added_at: t("2026-10-29T08:00:00Z") },
-  { media_type: "movie", title: "Sky Film", added_at: t("2026-10-28T21:56:00Z") },
-  { media_type: "album", title: "Some Album", added_at: t("2026-10-30T00:00:00Z") },
-  { media_type: "movie", title: "Old Film", added_at: t("2026-10-13T07:15:00Z") },
-];
-const PLAYS = { categories: ["2026-10-24", "2026-10-25", "2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31"],
-  series: [{ name: "TV", data: [0, 2, 2, 0, 3, 16, 2, 0] }, { name: "Movies", data: [0, 2, 0, 3, 1, 0, 0, 0] }, { name: "Live TV", data: [2, 4, 5, 5, 12, 8, 4, 0] }] };
-const LIBS = [{ section_type: "movie", count: "236" }, { section_type: "show", count: "75" }, { section_type: "artist", count: "781" }];
-const SESSIONS = [{ media_type: "episode", grandparent_title: "Moss", parent_media_index: "2", media_index: "11", title: "Eleven",
-  player: "LG TV", transcode_decision: "direct play", duration: "3000000", view_offset: "1620000", progress_percent: "54", user: "someone" }];
-const DISKS = { disks: { "/": { path: "/", free_space: 5e10, total_space: 1e11 }, "/mnt/media": { path: "/mnt/media", free_space: 5301613232128, total_space: 15765243691008 } } };
-const QUEUE = { shows: { "Pine.Ridge.S20E05": { title: "Pine Ridge (2007) (CA)", season_number: 20, episode_number: 5, size: 2.1e9, size_left: 0.7e9, download_client: "SABnzbd" } } };
-
+const t = (iso) => Date.parse(iso) / 1000;
 const items = M.agendaItems({ sonarr: SONARR, radarr: RADARR }, { days: 7, films: true }, TZ, NOW);
 const find = (title) => items.find((i) => i.title === title);
 const titles = items.map((i) => i.title);
@@ -83,39 +67,68 @@ ok(tvOnly.every((i) => i.kind === "tv") && tvOnly.filter((i) => i.title === "Pin
 ok(M.thumb("https://artworks.thetvdb.com/banners/v4/series/1/posters/abc.jpg").endsWith("abc_t.jpg"), "TVDB poster uses the _t thumbnail");
 ok(M.thumb("https://image.tmdb.org/t/p/original/x.jpg") === "https://image.tmdb.org/t/p/w154/x.jpg", "TMDB poster uses w154");
 
-// glance model
-ok(M.newThisWeek(RECENT, NOW) === 3, "new this week: one per show or film, no music, last 7 days");
-const pd = M.playsByDay(PLAYS);
-ok(pd.length === 7 && pd.reduce((a, x) => a + x.n, 0) === 31 && pd.at(-1).n === 0, "plays: last 7 days, TV + films only");
-ok(JSON.stringify(M.libraryCounts(LIBS)) === '{"films":236,"shows":75}', "library counts");
+// unwatched: Plex episodes (TV library, type 4) and films, viewCount for the token's account
+const PLEX_EPS = [
+  { grandparentTitle: "Moss", addedAt: t("2026-10-30T07:31:00Z") },
+  { grandparentTitle: "Moss", addedAt: t("2026-10-30T07:29:00Z") },
+  { grandparentTitle: "Kite Runners", addedAt: t("2026-10-30T01:33:00Z"), viewCount: 2 },
+  { grandparentTitle: "Pine Ridge", addedAt: t("2026-10-25T14:13:00Z") },
+  { grandparentTitle: "Old Show", addedAt: t("2026-10-12T14:13:00Z") },
+];
+const PLEX_FILMS = [
+  { title: "Sky Film", addedAt: t("2026-10-28T21:56:00Z") },
+  { title: "Seen Film", addedAt: t("2026-10-27T06:14:00Z"), viewCount: 1 },
+  { title: "Old Film", addedAt: t("2026-10-13T07:15:00Z") },
+];
+ok(M.unwatched(PLEX_EPS, PLEX_FILMS, NOW) === 3, "unwatched: Moss, Pine Ridge, Sky Film (one per show, past 7 days, not watched)");
+
+// queues and health in the Sonarr/Radarr v3 shapes
+const SQ = { records: [
+  { status: "completed", trackedDownloadStatus: "warning", trackedDownloadState: "importBlocked", series: PINE, episode: { seasonNumber: 20, episodeNumber: 5 },
+    statusMessages: [{ title: "x", messages: ["Not an upgrade for existing episode file(s)"] }] },
+  { status: "downloading", trackedDownloadStatus: "ok", trackedDownloadState: "downloading", series: KITE, episode: { seasonNumber: 2, episodeNumber: 1 },
+    size: 2.1e9, sizeleft: 0.7e9, timeleft: "00:04:12" },
+  { status: "queued", trackedDownloadStatus: "ok", trackedDownloadState: "downloading", series: MOSS, episode: { seasonNumber: 2, episodeNumber: 12 }, size: 1e9, sizeleft: 1e9 },
+] };
+const RQ = { records: [
+  { status: "failed", trackedDownloadStatus: "error", trackedDownloadState: "failedPending", movie: { title: "Night Courier", images: [] }, errorMessage: "Download failed" },
+] };
+const RH = [{ source: "IndexerStatusCheck", type: "warning", message: "Indexers unavailable due to failures" }];
+const probs = M.problemRows({ sonarr_queue: SQ, radarr_queue: RQ, sonarr_health: [], radarr_health: RH });
+ok(probs.length === 3 && probs[0].level === "error" && probs[0].title === "Night Courier" && probs[0].sub === "Radarr · download failed", "problems: errors first, Radarr download failed");
+ok(probs.some((p) => p.title === "Pine Ridge · S20 E5" && p.sub === "Sonarr · import blocked" && p.why.startsWith("Not an upgrade")), "import blocked with Sonarr's reason");
+ok(probs.some((p) => p.title === "Radarr health" && p.icon && p.why === "Indexers unavailable due to failures"), "health warning row");
+const dl = M.downloadRows({ sonarr_queue: SQ, radarr_queue: RQ });
+ok(dl.length === 2 && dl[0].title === "Kite Runners · S2 E1" && dl[0].sub === "1.4 of 2.1 GB · 4 min left" && Math.round(dl[0].pct) === 67 && dl[0].active, "download row: progress and time left");
+ok(dl[1].sub === "Queued" && !dl[1].active, "queued download");
+ok(M.timeLeft("1.02:30:00") === "26 h 30 min left" && M.timeLeft("") === "", "time left parsing");
+const SESSIONS = [{ media_type: "episode", grandparent_title: "Moss", parent_media_index: "2", media_index: "11", title: "Eleven",
+  player: "LG TV", transcode_decision: "direct play", duration: "3000000", view_offset: "1620000", progress_percent: "54", user: "someone" }];
 const sr = M.streamRows(SESSIONS)[0];
 ok(sr.title === "Moss · S2 E11" && sr.sub === "LG TV · direct play · 23 min left" && sr.pct === 54 && !sr.sub.includes("someone"), "stream row: show, player, how, time left, no user name");
-const qr = M.queueRows(QUEUE.shows, {}, "38")[0];
-ok(qr.title === "Pine Ridge · S20 E5" && qr.sub === "SABnzbd · 1.4 of 2.1 GB · 38 MB/s" && Math.round(qr.pct) === 67, "download row from the Sonarr queue");
 
 // rendering with a fake hass
 const calls = [];
-let states = {
-  "sensor.tautulli_watching": { state: "0" }, "sensor.sonarr_queue": { state: "0" },
-  "sensor.radarr_queue": { state: "0" }, "sensor.sabnzbd_speed": { state: "0.0" },
-};
+let busy = false;
+let states = { "sensor.tautulli_watching": { state: "0" }, "sensor.sabnzbd_speed": { state: "0.0" } };
 const reply = (content) => ({ response: { status: 200, content } });
 const hass = () => ({
   states: { ...states },
   config: { time_zone: TZ },
   callWS: async (m) => {
     calls.push(m);
-    if (m.type === "config_entries/get") return [{ entry_id: `e-${m.domain}`, state: "loaded" }];
     const s = `${m.domain}.${m.service}`;
-    if (s === "rest_command.sonarr_calendar") return reply(SONARR);
-    if (s === "rest_command.radarr_calendar") return reply(RADARR);
-    if (s === "rest_command.tautulli_recently_added") return reply({ response: { data: { recently_added: RECENT } } });
-    if (s === "rest_command.tautulli_plays") return reply({ response: { data: PLAYS } });
-    if (s === "rest_command.tautulli_libraries") return reply({ response: { data: LIBS } });
-    if (s === "rest_command.tautulli_activity") return reply({ response: { data: { sessions: SESSIONS } } });
-    if (s === "sonarr.get_diskspace") return { response: DISKS };
-    if (s === "sonarr.get_queue") return { response: QUEUE };
-    if (s === "radarr.get_queue") return { response: { movies: {} } };
+    switch (s) {
+      case "rest_command.sonarr_calendar": return reply(SONARR);
+      case "rest_command.radarr_calendar": return reply(RADARR);
+      case "rest_command.plex_recent_episodes": return reply({ MediaContainer: { Metadata: PLEX_EPS } });
+      case "rest_command.plex_recent_films": return reply({ MediaContainer: { Metadata: PLEX_FILMS } });
+      case "rest_command.sonarr_queue": return reply(busy ? SQ : { records: [] });
+      case "rest_command.radarr_queue": return reply(busy ? RQ : { records: [] });
+      case "rest_command.sonarr_health": return reply([]);
+      case "rest_command.radarr_health": return reply(busy ? RH : []);
+      case "rest_command.tautulli_activity": return reply({ response: { data: { sessions: SESSIONS } } });
+    }
     throw new Error(`unexpected ${s}`);
   },
 });
@@ -125,47 +138,45 @@ const $$ = (el, s) => [...el.shadowRoot.querySelectorAll(s)];
 
 (async () => {
   try { w.document.createElement("expressive-library-card").setConfig({ show: "posters" }); ok(false, "should throw"); }
-  catch (e) { ok(/glance or agenda/.test(e.message), "rejects an unknown show"); }
+  catch (e) { ok(/show must be one of/.test(e.message), "rejects an unknown show"); }
 
-  const glance = mk({ show: "glance" });
-  const agenda = mk({ show: "agenda" });
+  const cards = Object.fromEntries(["glance", "attention", "streaming", "downloads", "agenda"].map((k) => [k, mk({ show: k })]));
   await later(20);
-  const rest = calls.filter((c) => c.type === "call_service" && c.domain === "rest_command");
-  ok(rest.filter((c) => c.service === "sonarr_calendar").length === 1, "two cards share one fetch");
+  const rest = calls.filter((c) => c.domain === "rest_command");
+  ok(rest.filter((c) => c.service === "sonarr_calendar").length === 1 && rest.filter((c) => c.service === "sonarr_queue").length === 1, "five cards share one fetch");
   ok(rest.every((c) => c.return_response === true) && rest.find((c) => c.service === "sonarr_calendar").service_data.days === 7, "rest commands asked for responses, days passed");
-  ok(!rest.some((c) => c.service === "tautulli_activity") && !calls.some((c) => c.service === "get_queue"), "no activity or queue calls while idle");
+  ok(!rest.some((c) => c.service === "tautulli_activity"), "no activity call while nobody is watching");
 
-  ok($(glance, ".name").textContent === "Server" && $(glance, ".hsub").textContent === "Plex · Sonarr · Radarr", "glance heading");
-  const stats = $$(glance, ".stat b").map((b) => b.textContent);
-  ok(JSON.stringify(stats) === JSON.stringify(["3", String(items.filter((i) => !i.have).length), "0"]), "glance stats: new, due, streaming");
-  ok($(glance, ".quiet")?.textContent.includes("Nothing streaming or downloading"), "idle line");
-  ok($(glance, ".lr .tm").textContent === "Media disk · 5.3 TB free of 15.8", "disk from the Sonarr disk path");
-  ok($$(glance, ".spark i").length === 7 && $(glance, ".card").textContent.includes("31 plays this week") && $(glance, ".card").textContent.includes("236 films · 75 shows"), "plays sparkline and library counts");
+  const g = cards.glance;
+  ok($(g, ".name").textContent === "Server" && $(g, ".hsub").textContent === "Plex · Sonarr · Radarr", "glance heading");
+  const btn = $$(g, ".ssm").map((b) => [b.querySelector(".l").textContent, b.querySelector(".n").textContent]);
+  ok(JSON.stringify(btn) === '[["3","Unwatched"],["0","Problems"]]', `glance buttons ${JSON.stringify(btn)}`);
+  ok(!$(g, ".ssm.alert"), "Problems button not amber at 0");
+  ok($(cards.attention, ".msg").textContent === "Nothing needs attention" && $(cards.downloads, ".msg").textContent === "Queue empty"
+     && $(cards.streaming, ".msg").textContent === "Nobody watching", "quiet messages");
+  ok($(cards.agenda, ".name").textContent === "Coming up" && /due · next 7 days$/.test($(cards.agenda, ".hsub").textContent), "agenda heading");
+  const days = $$(cards.agenda, ".day span:first-child").map((x) => x.textContent);
+  ok(days[0] === "Yesterday" && days.includes("Monday"), `day groups (${days.join(", ")})`);
+  ok($$(cards.agenda, ".pill.have").length === items.filter((i) => i.have).length, "On Plex ticks");
 
-  ok($(agenda, ".name").textContent === "Coming up" && /due · next 7 days$/.test($(agenda, ".hsub").textContent), "agenda heading");
-  const days = $$(agenda, ".day span:first-child").map((s) => s.textContent);
-  ok(days[0] === "Yesterday" && days.includes("Monday") && !days.includes("Today"), `day groups (${days.join(", ")})`);
-  const rows = $$(agenda, ".ar");
-  ok(rows.length === items.length, "one row per item");
-  ok($$(agenda, ".pill.have").length === items.filter((i) => i.have).length, "On Plex ticks");
-  const pine = rows.find((r) => r.textContent.includes("Pine Ridge"));
-  ok(pine.querySelector(".pill.due").textContent === "morning" && pine.querySelector(".tm").textContent === "CBC", "due episode: day part and network");
-  ok(rows.find((r) => r.textContent.includes("Moss")).querySelector(".noimg"), "a show without a poster gets a blank tile");
-
-  // a stream starts and a download appears
-  states = { ...states, "sensor.tautulli_watching": { state: "1" }, "sensor.sonarr_queue": { state: "1" }, "sensor.sabnzbd_speed": { state: "38.2" } };
-  glance.hass = hass(); agenda.hass = hass();
+  // something's up: problems, a stream, downloads
+  busy = true;
+  states = { "sensor.tautulli_watching": { state: "1" }, "sensor.sabnzbd_speed": { state: "38.2" } };
+  Object.values(cards).forEach((c) => { c.hass = hass(); });
   await later(20);
-  ok(calls.some((c) => c.service === "tautulli_activity") && calls.some((c) => c.domain === "sonarr" && c.service === "get_queue" && c.service_data.entry_id === "e-sonarr"), "activity and queue fetched once things happen");
-  const acts = $$(glance, ".ac .ti").map((x) => x.textContent);
-  ok(acts[0] === "Moss · S2 E11" && acts[1] === "Pine Ridge · S20 E5", "stream and download rows");
-  ok($$(glance, ".stat b")[2].textContent === "1" && !$(glance, ".quiet"), "streaming count, no idle line");
+  ok(calls.some((c) => c.service === "tautulli_activity"), "activity fetched once someone is watching");
+  ok($$(g, ".ssm .l")[1].textContent === "3" && $(g, ".ssm.alert .n").textContent === "Problems", "Problems button counts and turns amber");
+  const a = cards.attention;
+  ok($(a, ".hsub").textContent === "3 problems" && $(a, ".hsub").classList.contains("live"), "attention heading");
+  ok($$(a, ".ar").length === 3 && $(a, ".pill.err").textContent === "Error" && $(a, ".why").textContent.length > 0, "attention rows with pills and reasons");
+  ok($(cards.streaming, ".hsub").textContent === "1 now" && $(cards.streaming, ".ti").textContent === "Moss · S2 E11", "streaming block");
+  ok($(cards.downloads, ".hsub").textContent === "2 in queue · 38 MB/s" && $$(cards.downloads, ".ar").length === 2, "downloads block, problems left out");
 
   // errors
-  glance.remove(); agenda.remove();
+  Object.values(cards).forEach((c) => c.remove());
   const bad = w.document.createElement("expressive-library-card");
   bad.setConfig({ show: "agenda", services: { sonarr: "rest_command.missing", radarr: "rest_command.missing" } });
-  M.store.data = {}; M.store.at = 0;
+  M.store.data = {}; M.store.slowAt = 0;
   bad.hass = hass(); w.document.body.append(bad);
   await later(20);
   ok($(bad, ".msg")?.textContent === "Couldn’t reach Sonarr", "a message instead of rows when Sonarr can't be reached");

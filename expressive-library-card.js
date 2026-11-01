@@ -38,7 +38,7 @@
  */
 
 (() => {
-  const VERSION = "0.2.2";
+  const VERSION = "0.2.3";
   const DAY_MS = 86400000;
   const SLOW_MS = 5 * 60000;
   const FAST_MS = 30000;
@@ -257,7 +257,8 @@
       }));
 
   // Live TV has no position or programme times, so it shows the channel instead of progress.
-  const channel = (s) => /\(([^)]+)\)/.exec(s.channel_title ?? "")?.[1] ?? s.channel_call_sign ?? "";
+  // channel_title is "<number> <call sign> (<name>)", and the name can hold its own brackets.
+  const channel = (s) => /\((.+)\)/.exec(s.channel_title ?? "")?.[1] ?? s.channel_call_sign ?? "";
   const streamRows = (sessions) =>
     (sessions ?? []).map((s) => {
       const live = num(s.live) === 1;
@@ -267,7 +268,7 @@
       const who = s.friendly_name || s.user || s.player || s.product;
       return {
         title: tv ? `${s.grandparent_title} · S${s.parent_media_index} E${s.media_index}` : s.title,
-        sub: [live ? "Live" : "", live ? channel(s) : "", who, how, !live && left ? `${left} min left` : ""].filter(Boolean).join(" · "),
+        sub: [who, how, live ? channel(s) : left ? `${left} min left` : ""].filter(Boolean).join(" · "),
         pct: live ? null : num(s.progress_percent),
       };
     });

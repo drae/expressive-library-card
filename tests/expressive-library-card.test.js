@@ -111,7 +111,8 @@ ok(M.streamRows([{ ...SESSIONS[0], friendly_name: "" }])[0].sub.startsWith("some
 const LIVE = [{ media_type: "movie", live: 1, title: "Goosebumps 2", channel_title: "004 C4 (Channel 4)", channel_call_sign: "C4HD",
   player: "DESKTOP", transcode_decision: "copy", duration: "6300000", view_offset: "", progress_percent: "0" }];
 const lr = M.streamRows(LIVE)[0];
-ok(lr.sub === "Live · Channel 4 · DESKTOP · direct stream" && lr.pct === null, "live TV: channel, no progress or time left");
+ok(lr.sub === "DESKTOP · direct stream · Channel 4" && lr.pct === null, "live TV: channel in place of time left, no progress");
+ok(M.streamRows([{ ...LIVE[0], channel_title: "003 ITV1HD (ITV1 HD (London))" }])[0].sub.endsWith("· ITV1 HD (London)"), "live TV: bracketed channel name kept whole");
 
 // rendering with a fake hass
 const calls = [];

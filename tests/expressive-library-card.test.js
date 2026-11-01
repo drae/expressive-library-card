@@ -103,9 +103,10 @@ ok(dl.length === 2 && dl[0].title === "Kite Runners · S2 E1" && dl[0].sub === "
 ok(dl[1].sub === "Queued" && !dl[1].active, "queued download");
 ok(M.timeLeft("1.02:30:00") === "26 h 30 min left" && M.timeLeft("") === "", "time left parsing");
 const SESSIONS = [{ media_type: "episode", grandparent_title: "Moss", parent_media_index: "2", media_index: "11", title: "Eleven",
-  player: "LG TV", transcode_decision: "direct play", duration: "3000000", view_offset: "1620000", progress_percent: "54", user: "someone" }];
+  player: "LG TV", transcode_decision: "direct play", duration: "3000000", view_offset: "1620000", progress_percent: "54", user: "someone", friendly_name: "Robin" }];
 const sr = M.streamRows(SESSIONS)[0];
-ok(sr.title === "Moss · S2 E11" && sr.sub === "LG TV · direct play · 23 min left" && sr.pct === 54 && !sr.sub.includes("someone"), "stream row: show, player, how, time left, no user name");
+ok(sr.title === "Moss · S2 E11" && sr.sub === "Robin · direct play · 23 min left" && sr.pct === 54 && !sr.sub.includes("LG TV"), "stream row: show, user, how, time left");
+ok(M.streamRows([{ ...SESSIONS[0], friendly_name: "" }])[0].sub.startsWith("someone ·"), "stream row: username when no friendly name");
 
 const LIVE = [{ media_type: "movie", live: 1, title: "Goosebumps 2", channel_title: "004 C4 (Channel 4)", channel_call_sign: "C4HD",
   player: "DESKTOP", transcode_decision: "copy", duration: "6300000", view_offset: "", progress_percent: "0" }];

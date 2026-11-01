@@ -38,7 +38,7 @@
  */
 
 (() => {
-  const VERSION = "0.2.1";
+  const VERSION = "0.2.2";
   const DAY_MS = 86400000;
   const SLOW_MS = 5 * 60000;
   const FAST_MS = 30000;
@@ -264,9 +264,10 @@
       const tv = s.media_type === "episode" && s.grandparent_title;
       const left = Math.max(0, Math.round((num(s.duration) - num(s.view_offset)) / 60000));
       const how = s.transcode_decision === "transcode" ? "transcode" : s.transcode_decision === "copy" ? "direct stream" : "direct play";
+      const who = s.friendly_name || s.user || s.player || s.product;
       return {
         title: tv ? `${s.grandparent_title} · S${s.parent_media_index} E${s.media_index}` : s.title,
-        sub: [live ? "Live" : "", live ? channel(s) : "", s.player || s.product, how, !live && left ? `${left} min left` : ""].filter(Boolean).join(" · "),
+        sub: [live ? "Live" : "", live ? channel(s) : "", who, how, !live && left ? `${left} min left` : ""].filter(Boolean).join(" · "),
         pct: live ? null : num(s.progress_percent),
       };
     });
